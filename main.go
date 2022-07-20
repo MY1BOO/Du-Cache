@@ -26,6 +26,6 @@ func main() {
 
 	addr := "localhost:9999"
 	peers := duhttp.NewHttpPool(addr)
-	log.Println("geecache is running at", addr)
+	log.Println("Du-cache is running at", addr)
 	log.Fatal(http.ListenAndServe(addr, peers))
 }
