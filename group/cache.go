@@ -1,4 +1,4 @@
-package geecache
+package group
 
 import (
 	"Du-Cache/lru"
