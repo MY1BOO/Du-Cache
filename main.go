@@ -9,9 +9,10 @@ import (
 )
 
 var db = map[string]string{
-	"Tom":  "630",
-	"Jack": "589",
-	"Sam":  "567",
+	"Tom":   "630",
+	"Jack":  "589",
+	"Sam":   "567",
+	"嘟是什么嘟": "哈纸嘟",
 }
 
 func main() {
@@ -26,6 +27,6 @@ func main() {
 
 	addr := "localhost:9999"
 	peers := duhttp.NewHttpPool(addr)
-	log.Println("Du-cache is running at", addr)
+	log.Println("Du-Cache is running at", addr)
 	log.Fatal(http.ListenAndServe(addr, peers))
 }
