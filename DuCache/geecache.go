@@ -1,4 +1,4 @@
-package group
+package DuCache
 
 import (
 	"fmt"
@@ -20,6 +20,9 @@ type Group struct {
 	//回调函数
 	getter    Getter
 	mainCache cache
+	// HttpPool对象（HTTP服务端），它实现了PeerPicker
+	// 记录可访问的远程节点
+	peers PeerPicker
 }
 
 //回调Getter，在缓存不存在时，调用这个函数，得到源数据
@@ -72,8 +75,17 @@ func (g *Group) Get(key string) (ByteView, error) {
 	return g.load(key)
 }
 
-//调用getLocally()从本地获取
+//如果一致性哈希选择到了远程节点，则调用getFromPeer()从远程获取数据，否则调用getLocally()从本地获取数据
 func (g *Group) load(key string) (ByteView, error) {
+	if g.peers != nil {
+		if peerGetter, ok := g.peers.PickPeer(key); ok {
+			byteView, err := g.getFromPeer(peerGetter, key)
+			if err == nil {
+				return byteView, nil
+			}
+			log.Println("[GeeCache] Failed to get from peer", err)
+		}
+	}
 	return g.getLocally(key)
 }
 
@@ -91,4 +103,21 @@ func (g *Group) getLocally(key string) (ByteView, error) {
 //将数据放入缓存
 func (g *Group) populateCache(key string, value ByteView) {
 	g.mainCache.add(key, value)
+}
+
+//从远程节点获取数据
+func (g *Group) getFromPeer(peer PeerGetter, key string) (ByteView, error) {
+	bytes, err := peer.Get(g.name, key)
+	if err != nil {
+		return ByteView{}, err
+	}
+	return ByteView{b: bytes}, nil
+}
+
+// 将实现了 PeerPicker 接口的 HTTPPool 注入到 Group 中
+func (g *Group) RegisterPeers(peers PeerPicker) {
+	if g.peers != nil {
+		panic("RegisterPeerPicker called more than once")
+	}
+	g.peers = peers
 }

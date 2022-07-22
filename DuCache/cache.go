@@ -1,7 +1,7 @@
-package group
+package DuCache
 
 import (
-	"Du-Cache/lru"
+	"Du-Cache/DuCache/lru"
 	"sync"
 )
 
