@@ -2,7 +2,9 @@ package DuCache
 
 import (
 	"Du-Cache/DuCache/consistenthash"
+	pb "Du-Cache/DuCache/ducachepb"
 	"fmt"
+	"google.golang.org/protobuf/proto"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -71,13 +73,21 @@ func (p *HttpPool) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no such group: "+groupName, http.StatusNotFound)
 		return
 	}
+
 	byteView, err := group.Get(key)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	body, err := proto.Marshal(&pb.Response{Value: byteView.ByteSlice()})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Write(byteView.ByteSlice())
+	w.Write(body)
 }
 
 //实例化一致性哈希map，将节点添加进去，并将节点和对应的httpGetter映射起来
@@ -113,29 +123,33 @@ type httpGetter struct {
 	baseURL string
 }
 
-func (h *httpGetter) Get(group string, key string) ([]byte, error) {
+func (h *httpGetter) Get(in *pb.Request, out *pb.Response) error {
 	//进行格式化字符串拼接，格式：http://example.com/ducache/group/key
 	u := fmt.Sprintf(
 		"%v%v/%v",
 		h.baseURL,
-		url.QueryEscape(group),
-		url.QueryEscape(key),
+		url.QueryEscape(in.Group),
+		url.QueryEscape(in.Key),
 	)
 	//发起http请求
 	res, err := http.Get(u)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer res.Body.Close()
 	//检查状态码
 	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("server returned: %v", res.Status)
+		return fmt.Errorf("server returned: %v", res.Status)
 	}
 	//读取相应消息体内容
 	bytes, err := ioutil.ReadAll(res.Body)
 	if err != nil {
-		return nil, fmt.Errorf("reading response body: %v", err)
+		return fmt.Errorf("reading response body: %v", err)
+	}
+	//反序列化
+	if err = proto.Unmarshal(bytes, out); err != nil {
+		return fmt.Errorf("decoding response body: %v", err)
 	}
 
-	return bytes, nil
+	return nil
 }

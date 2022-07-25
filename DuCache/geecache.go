@@ -1,6 +1,7 @@
 package DuCache
 
 import (
+	pb "Du-Cache/DuCache/ducachepb"
 	"Du-Cache/DuCache/singleflight"
 	"fmt"
 	"log"
@@ -117,11 +118,16 @@ func (g *Group) populateCache(key string, value ByteView) {
 
 //从远程节点获取数据
 func (g *Group) getFromPeer(peer PeerGetter, key string) (ByteView, error) {
-	bytes, err := peer.Get(g.name, key)
+	req := &pb.Request{
+		Group: g.name,
+		Key:   key,
+	}
+	res := &pb.Response{}
+	err := peer.Get(req, res)
 	if err != nil {
 		return ByteView{}, err
 	}
-	return ByteView{b: bytes}, nil
+	return ByteView{b: res.Value}, nil
 }
 
 // 将实现了 PeerPicker 接口的 HTTPPool 注入到 Group 中
