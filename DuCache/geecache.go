@@ -1,6 +1,7 @@
 package DuCache
 
 import (
+	"Du-Cache/DuCache/singleflight"
 	"fmt"
 	"log"
 	"sync"
@@ -23,6 +24,8 @@ type Group struct {
 	// HttpPool对象（HTTP服务端），它实现了PeerPicker
 	// 记录可访问的远程节点
 	peers PeerPicker
+	//保证同一时刻只有一个协程在执行查询，防止缓存击穿
+	loader *singleflight.Group
 }
 
 //回调Getter，在缓存不存在时，调用这个函数，得到源数据
@@ -50,6 +53,7 @@ func NewGroup(name string, cacheBytes int64, getter Getter) *Group {
 		name:      name,
 		getter:    getter,
 		mainCache: cache{cacheBytes: cacheBytes},
+		loader:    &singleflight.Group{},
 	}
 	groups[name] = g
 	return g
@@ -76,17 +80,23 @@ func (g *Group) Get(key string) (ByteView, error) {
 }
 
 //如果一致性哈希选择到了远程节点，则调用getFromPeer()从远程获取数据，否则调用getLocally()从本地获取数据
-func (g *Group) load(key string) (ByteView, error) {
-	if g.peers != nil {
-		if peerGetter, ok := g.peers.PickPeer(key); ok {
-			byteView, err := g.getFromPeer(peerGetter, key)
-			if err == nil {
-				return byteView, nil
+func (g *Group) load(key string) (value ByteView, err error) {
+	view, err := g.loader.Do(key, func() (interface{}, error) {
+		if g.peers != nil {
+			if peerGetter, ok := g.peers.PickPeer(key); ok {
+				byteView, err := g.getFromPeer(peerGetter, key)
+				if err == nil {
+					return byteView, nil
+				}
+				log.Println("[GeeCache] Failed to get from peer", err)
 			}
-			log.Println("[GeeCache] Failed to get from peer", err)
 		}
+		return g.getLocally(key)
+	})
+	if err == nil {
+		return view.(ByteView), nil
 	}
-	return g.getLocally(key)
+	return
 }
 
 //调用用户设置的回调函数Getter从本地获取数据，然后再调用populateCache()将数据放入缓存
